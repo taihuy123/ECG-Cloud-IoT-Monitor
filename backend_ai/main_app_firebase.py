@@ -7,9 +7,9 @@ import torch.nn as nn
 from scipy.signal import find_peaks
 
 # --- CONFIGURATION ---
-FIREBASE_URL = "https://ecg-iot-c1b8d-default-rtdb.asia-southeast1.firebasedatabase.app/current_packet.json"
-TELEGRAM_TOKEN = "8949102038:AAEY9NmasSg2eUym5ZwRr3xi9EJcy0P1FKk"
-TELEGRAM_CHAT_ID = "7967447536"
+FIREBASE_URL = "55412\5"
+TELEGRAM_TOKEN = "1235667"
+TELEGRAM_CHAT_ID = "1245121"
 ALERT_COOLDOWN = 15     
 
 class ECGLSTM(nn.Module):
