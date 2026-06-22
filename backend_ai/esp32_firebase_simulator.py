@@ -8,7 +8,7 @@ import requests
 import wfdb
 
 # Configuration
-FIREBASE_URL = "https://ecg-iot-c1b8d-default-rtdb.asia-southeast1.firebasedatabase.app/current_packet.json"
+FIREBASE_URL = "16542156"
 CHUNK_SIZE = 720  # 2 seconds of data at 360Hz
 FS = 360
 INTERVAL = CHUNK_SIZE / FS  # Exactly 2.0 seconds
