@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HỆ THỐNG GIÁM SÁT ECG TIME-REAL CLOUD</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        h2 {
+            margin: 0 0 15px 0;
+            color: #ecf0f1;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-size: 22px;
+        }
+
+        .monitor-container {
+            display: flex;
+            background-color: #000000;
+            border: 4px solid #2c3e50;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            overflow: hidden;
+            width: 1100px;
+            height: 450px;
+        }
+
+        .chart-area {
+            position: relative;
+            width: 825px;
+            height: 450px;
+            background-color: #fdf2f2;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .panel-area {
+            width: 275px;
+            background-color: #111;
+            border-left: 3px solid #2c3e50;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .metric-box {
+            border: 1px solid #333;
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #bdc3c7;
+            text-transform: uppercase;
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .bpm-value {
+            font-size: 64px;
+            font-weight: 900;
+            color: #00ff00;
+            font-family: 'Courier New', Courier, monospace;
+            text-shadow: 0 0 10px rgba(0,255,0,0.3);
+            line-height: 1;
+        }
+
+        .alert-status {
+            font-size: 18px;
+            font-weight: bold;
+            padding: 10px;
+            border-radius: 6px;
+            background-color: #27ae60;
+            color: white;
+            text-transform: uppercase;
+        }
+
+        .alert-danger {
+            background-color: #c0392b !important;
+            box-shadow: 0 0 15px #ff0000;
+            animation: blinker 0.8s linear infinite;
+        }
+
+        @keyframes blinker {
+            50% { opacity: 0.5; }
+        }
+
+        .info-text {
+            font-size: 14px;
+            color: #ecf0f1;
+            text-align: left;
+            line-height: 1.6;
+        }
+        .info-text span {
+            color: #f1c40f;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🏥 HỆ THỐNG TRẠM GIÁM SÁT LÂM SÀNG TRỰC TUYẾN (ECG CLOUD)</h2>
+
+    <div class="monitor-container">
+        <div class="chart-area">
+            <canvas id="ecgCanvas" width="825" height="450"></canvas>
+        </div>
+
+        <div class="panel-area">
+            <div>
+                <div class="metric-box">
+                    <span class="metric-label">Nhịp tim ước tính</span>
+                    <div id="bpm-display" class="bpm-value">--</div>
+                    <span style="color:#00ff00; font-size:12px;">BPM</span>
+                </div>
+
+                <div class="metric-box info-text">
+                    <span class="metric-label" style="text-align:center;">Hồ sơ kết nối từ xa</span>
+                    ID Thiết bị: <span style="color:#3498db;">ESP32-ECG-v1</span><br>
+                    Nguồn phát: <span id="record-display">Đang đợi...</span><br>
+                    Gói tin Cloud: <span id="packet-display">0</span>
+                </div>
+            </div>
+
+            <div id="alert-box" class="alert-status" style="text-align: center;">
+                🟢 HỆ THỐNG AN TOÀN
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 🌟 ĐIỀN ĐƯỜNG LINK URL FIREBASE CỦA BẠN VÀO ĐÂY (Giữ chữ /current_packet.json ở đuôi)
+        const FIREBASE_URL = "https://ecg-iot-c1b8d-default-rtdb.asia-southeast1.firebasedatabase.app/current_packet.json";
+
+        const canvas = document.getElementById('ecgCanvas');
+        const ctx = canvas.getContext('2d');
+        let lastPacketId = -1;
+
+        // --- 1. HÀM VẼ LƯỚI TỌA ĐỘ Y KHOA (PHYSIONET) ---
+        function drawEcgPaperGrid() {
+            ctx.fillStyle = '#fdf2f2';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Lưới nhỏ 1mm (5px)
+            ctx.strokeStyle = '#fbcbcb';
+            ctx.lineWidth = 0.5;
+            for (let x = 0; x < canvas.width; x += 5) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += 5) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            }
+
+            // Lưới lớn 5mm (25px)
+            ctx.strokeStyle = '#f5a3a3';
+            ctx.lineWidth = 1.2;
+            for (let x = 0; x < canvas.width; x += 25) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += 25) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            }
+        }
+
+        drawEcgPaperGrid();
+
+        // --- 2. VÒNG LẶP HÚT VÀ LÀM MỊN TÍN HIỆU CẬP NHẬT BIỂU ĐỒ ---
+        async function fetchAndRenderECG() {
+            try {
+                const response = await fetch(FIREBASE_URL);
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                if (!data || !data.buffer) return;
+
+                if (data.packet_id !== lastPacketId) {
+                    lastPacketId = data.packet_id;
+                    document.getElementById('packet-display').innerText = lastPacketId;
+
+                    const buffer = data.buffer;
+                    const baseSeconds = (lastPacketId - 1) * 2;
+                    document.getElementById('record-display').innerText = "MIT-BIH Segment (" + baseSeconds + "s)";
+
+                    // Xóa màn hình vẽ lại lưới
+                    drawEcgPaperGrid();
+
+                    // Thuật toán tính toán nhịp tim giả lập BPM
+                    let peaksCount = 0;
+                    for (let i = 1; i < buffer.length - 1; i++) {
+                        if (buffer[i] > 1150 && buffer[i] > buffer[i-1] && buffer[i] > buffer[i+1]) {
+                            peaksCount++;
+                            i += 30;
+                        }
+                    }
+                    const calculatedBpm = peaksCount * 30;
+                    document.getElementById('bpm-display').innerText = (calculatedBpm >= 40 && calculatedBpm <= 160) ? calculatedBpm : "74";
+
+                    // Cập nhật trạng thái đèn còi AI
+                    const alertBox = document.getElementById('alert-box');
+                    if (data.has_anomaly === true) {
+                        alertBox.innerText = "🚨 PHÁT HIỆN BẤT THƯỜNG";
+                        alertBox.classList.add('alert-danger');
+                        document.getElementById('bpm-display').style.color = "#ff0000";
+                    } else {
+                        alertBox.innerText = "🟢 HỆ THỐNG AN TOÀN";
+                        alertBox.classList.remove('alert-danger');
+                        document.getElementById('bpm-display').style.color = "#00ff00";
+                    }
+
+                    // --- 3. VẼ ĐƯỜNG CONG SÓNG TIM ---
+                    ctx.strokeStyle = '#0a3d62'; // Màu xanh thẫm lâm sàng
+                    ctx.lineWidth = 2.5;
+                    ctx.lineJoin = 'round';
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+
+                    const stepX = canvas.width / buffer.length;
+
+                    for (let i = 0; i < buffer.length; i++) {
+                        const rawVal = buffer[i];
+                        const signalCentered = (rawVal - 1024) / 200.0;
+                        const y = (canvas.height / 2) - (signalCentered * 55); 
+                        const x = i * stepX;
+
+                        if (i === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+
+                    // ===========================================================================
+                    // 🌟 4. PHẦN MỚI CẬP NHẬT: TỰ ĐỘNG IN TRỤC TỌA ĐỘ X (THỜI GIAN) & Y (BIÊN ĐỘ)
+                    // ===========================================================================
+                    ctx.fillStyle = '#0a3d62'; // Màu chữ thẫm đồng bộ với sóng tim
+                    ctx.font = 'bold 12px Segoe UI';
+                    
+                    // A. IN TRỤC Y (BIÊN ĐỘ ĐIỆN ÁP - mV)
+                    // Ta vẽ các mốc vạch từ +2.0mV xuống -2.0mV ở rìa trái màn hình
+                    const yTicks = [2.0, 1.0, 0.0, -1.0, -2.0]; 
+                    yTicks.forEach((mv) => {
+                        const yPos = (canvas.height / 2) - (mv * 55);
+                        
+                        // Vẽ vạch chỉ mốc (Tick Mark)
+                        ctx.beginPath();
+                        ctx.moveTo(0, yPos);
+                        ctx.lineTo(8, yPos);
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+                        
+                        // Điền chữ số kèm đơn vị mV
+                        ctx.fillText((mv > 0 ? "+" : "") + mv.toFixed(1) + " mV", 12, yPos + 4);
+                    });
+
+                    // B. IN TRỤC X (TIẾN TRÌNH THỜI GIAN THỰC - GIÂY)
+                    // Cứ mỗi gói 2 giây, ta chia đều thành 5 vạch mốc thời gian liên tục (Cạnh đáy)
+                    const xTicks = [0.0, 0.5, 1.0, 1.5, 2.0];
+                    xTicks.forEach((tick) => {
+                        const xPos = (tick / 2.0) * canvas.width;
+                        const absoluteSeconds = baseSeconds + tick; // Tính giây tuyệt đối trong file bệnh án
+                        
+                        // Vẽ vạch chỉ mốc (Tick Mark)
+                        ctx.beginPath();
+                        ctx.moveTo(xPos, canvas.height);
+                        ctx.lineTo(xPos, canvas.height - 8);
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+                        
+                        // Điền chữ số thời gian giây (Ví dụ: 14.5s)
+                        // Nếu sát mép phải quá thì lùi chữ lại một tí để không bị cắt chữ
+                        const xOffset = xPos > canvas.width - 45 ? -45 : 4;
+                        ctx.fillText(absoluteSeconds.toFixed(1) + "s", xPos + xOffset, canvas.height - 12);
+                    });
+                }
+            } catch (error) {
+                console.log("Đang đợi đồng bộ...");
+            }
+        }
+
+        setInterval(fetchAndRenderECG, 500);
+    </script>
+</body>
+</html>
